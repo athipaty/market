@@ -40,7 +40,7 @@ export function MyListings() {
         {listings.map((listing) => (
           <div key={listing.id} className="card listing-card">
             <ListingCard listing={listing} />
-            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
               {listing.status === "ACTIVE" && (
                 <button className="btn btn-secondary" onClick={() => markSold(listing.id)}>
                   Mark sold

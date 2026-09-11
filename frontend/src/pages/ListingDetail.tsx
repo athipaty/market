@@ -48,10 +48,10 @@ export function ListingDetail() {
 
   return (
     <div className="container page" style={{ maxWidth: 720 }}>
-      <div className="image-thumb-row" style={{ marginBottom: 16 }}>
+      <div className="image-thumb-row image-thumb-row-large">
         {listing.images.length === 0 && <p className="muted">No photos</p>}
         {listing.images.map((img) => (
-          <img key={img} src={resolveAssetUrl(img)} alt={listing.title} style={{ width: 160, height: 160 }} />
+          <img key={img} src={resolveAssetUrl(img)} alt={listing.title} />
         ))}
       </div>
       <h1>{listing.title}</h1>
