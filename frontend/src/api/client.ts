@@ -1,4 +1,7 @@
+// The backend lives in the shared center-kitchen-backend service, where this
+// app's routes are namespaced under /api/market instead of owning /api/*.
 const API_URL = import.meta.env.VITE_API_URL ?? "";
+const API_PREFIX = "/api/market";
 
 export function getToken(): string | null {
   return localStorage.getItem("token");
@@ -26,7 +29,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
+  // Callers write paths as "/api/..." (matching the app's own conceptual
+  // API); rewrite to the shared backend's "/api/market/..." namespace here
+  // so page code doesn't need to know about that indirection.
+  const resolvedPath = path.startsWith("/api/") ? `${API_PREFIX}${path.slice(4)}` : path;
+  const res = await fetch(`${API_URL}${resolvedPath}`, { ...options, headers });
   if (res.status === 204) return undefined as T;
 
   const data = await res.json().catch(() => ({}));

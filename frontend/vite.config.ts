@@ -5,11 +5,13 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    // Only used when VITE_API_URL is left blank and you're running a local
+    // clone of center-kitchen-backend (default port 5000). With VITE_API_URL
+    // set to the deployed backend, requests go straight there instead.
     proxy: {
-      "/api": "http://localhost:4000",
-      "/uploads": "http://localhost:4000",
+      "/api": "http://localhost:5000",
       "/socket.io": {
-        target: "http://localhost:4000",
+        target: "http://localhost:5000",
         ws: true,
       },
     },

@@ -3,104 +3,88 @@
 A local marketplace: list something for sale with your location, buyers nearby
 can search by distance and message you directly through in-app chat.
 
+This repo holds the **frontend only** (React + Vite). The API lives in the
+shared [`center-kitchen-backend`](https://github.com/athipaty/center-kitchen-backend)
+repo, under `models/market/` and `routes/market/`, mounted at `/api/market/*`
+— one paid backend service shared across several projects, rather than a
+dedicated backend per frontend.
+
 ## How it works
 
-- **Listings** carry a lat/lng captured from the seller's browser (or a manual
-  location). Search results are filtered by a bounding box in SQL and then
-  ranked by precise great-circle (haversine) distance from the searcher's
-  location.
-- **Chat** is real-time over Socket.IO, authenticated with the same JWT used
-  for the REST API. Messages are persisted to Postgres so conversation history
-  survives reconnects/reloads; a REST fallback endpoint exists for sending
+- **Listings** carry a location captured from the seller's browser (or a
+  manual location). Search is a MongoDB `$geoNear` query against a 2dsphere
+  index, so results come back already sorted by distance with the distance
+  included.
+- **Chat** is real-time over a dedicated `/market` Socket.IO namespace on the
+  shared backend (so its events don't mix with the backend's other
+  projects), authenticated with the same JWT used for the REST API. Messages
+  are persisted to MongoDB; a REST fallback endpoint exists for sending
   messages without a socket.
+- **Photos** upload to the shared backend's Backblaze B2 bucket (under a
+  `market-listings/` prefix) and come back as plain HTTPS URLs.
 
 ## Project layout
 
 ```
-backend/   Express + TypeScript API, Prisma/Postgres, Socket.IO chat
-frontend/  React + TypeScript (Vite) client
-render.yaml  Render Blueprint: one paid web service + a free Postgres DB
+frontend/  React + TypeScript (Vite) client — this is what this repo deploys
 ```
 
-In production the backend also serves the built frontend, so the whole app
-runs as a single deployable/paid service (`backend/src/index.ts` serves
-`frontend/dist` as static files, with an SPA fallback to `index.html` for any
-route that isn't `/api/*`, `/uploads/*`, or `/socket.io/*`). Locally you still
-run the two dev servers separately (see below) for fast reloads.
+The API client (`frontend/src/api/client.ts`) targets `VITE_API_URL` and
+rewrites any `/api/...` call to `/api/market/...` under the hood, so page
+code just calls `/api/listings`, `/api/auth/login`, etc. without needing to
+know about that namespacing.
 
 ## Local development
 
-Prerequisites: Node 20+, a Postgres database.
-
-### 1. Backend
-
-```bash
-cd backend
-cp .env.example .env      # edit DATABASE_URL etc.
-npm install
-npx prisma migrate dev    # creates tables
-npm run dev                # http://localhost:4000
-```
-
-### 2. Frontend
-
 ```bash
 cd frontend
-cp .env.example .env      # VITE_API_URL=http://localhost:4000
+cp .env.example .env   # VITE_API_URL=https://center-kitchen-backend.onrender.com
 npm install
-npm run dev                 # http://localhost:5173
+npm run dev              # http://localhost:5173
 ```
 
-The Vite dev server proxies `/api`, `/uploads`, and `/socket.io` to
-`localhost:4000`, so `VITE_API_URL` can be left blank in local dev if you
-prefer relative URLs — it's only required for a production build where the
-frontend and backend are on different origins.
+By default `.env.example` points at the live shared backend, so you get real
+data immediately without running any backend yourself. If you're also
+developing on `center-kitchen-backend` locally (default port 5000), point
+`VITE_API_URL` at `http://localhost:5000` instead — `vite.config.ts` also
+proxies `/api` and `/socket.io` to `localhost:5000` for when `VITE_API_URL`
+is left blank.
 
-## Deploying to Render
+## Deploying
 
-`render.yaml` defines a Blueprint with two resources: a free Postgres
-database and a single Node web service (`market`) that builds the frontend,
-builds the backend, and serves both from one process — so you only pay for
-one service.
+Deploy this repo as a static site (e.g. Vercel — zero-config for a Vite
+app). Set the `VITE_API_URL` build-time env var to the backend's URL
+(`https://center-kitchen-backend.onrender.com`).
 
-1. Push this repo to GitHub/GitLab.
-2. In the Render dashboard, choose **New > Blueprint** and point it at the
-   repo. Render will provision `market-db` and `market`.
-3. That's it — no cross-service URLs to wire up, since the frontend and API
-   share one origin. The frontend's API client defaults to same-origin
-   relative requests when `VITE_API_URL` isn't set at build time, which is
-   the case here.
-
-Notes:
-- The free web service plan uses an ephemeral filesystem, so uploaded listing
-  photos in `UPLOADS_DIR` won't survive a redeploy/restart. For production,
-  either upgrade to a paid plan with a persistent disk, or swap the uploads
-  route for an object store (S3, R2, Cloudinary, etc.) — the upload endpoint
-  is isolated in `backend/src/routes/uploads.ts` so that's a self-contained
-  change.
-- `startCommand` runs `prisma migrate deploy` before starting the server, so
-  schema migrations apply automatically on every deploy.
+Once you know the deployed frontend's URL, add it to the `MARKET_FRONTEND_URL`
+env var on the `center-kitchen-backend` Render service (or add it directly to
+the `allowedOrigins` array in that repo's `server.js`) so the backend's CORS
+allow-list includes it.
 
 ## API overview
 
+All paths below are mounted at `/api/market/...` on `center-kitchen-backend`
+(the frontend's API client adds that prefix automatically — see above).
+
 | Method | Path | Description |
 | --- | --- | --- |
-| POST | `/api/auth/register` | Create an account (optionally with a home location) |
-| POST | `/api/auth/login` | Log in, returns a JWT |
-| GET | `/api/auth/me` | Current user |
-| PATCH | `/api/auth/me/location` | Update saved home location |
-| POST | `/api/listings` | Create a listing (auth required) |
-| GET | `/api/listings?lat=&lng=&radiusKm=&q=&category=` | Search nearby active listings |
-| GET | `/api/listings/mine` | Your own listings (auth required) |
-| GET | `/api/listings/:id` | Listing detail |
-| PATCH | `/api/listings/:id` | Update/mark sold (owner only) |
-| DELETE | `/api/listings/:id` | Remove a listing (owner only) |
-| POST | `/api/uploads` | Upload listing photos (multipart, auth required) |
-| POST | `/api/conversations` | Start a conversation with a listing's seller |
-| GET | `/api/conversations` | List your conversations |
-| GET | `/api/conversations/:id/messages` | Message history |
-| POST | `/api/conversations/:id/messages` | Send a message (REST fallback) |
+| POST | `/auth/register` | Create an account (optionally with a home location) |
+| POST | `/auth/login` | Log in, returns a JWT |
+| GET | `/auth/me` | Current user |
+| PATCH | `/auth/me/location` | Update saved home location |
+| POST | `/listings` | Create a listing (auth required) |
+| GET | `/listings?lat=&lng=&radiusKm=&q=&category=` | Search nearby active listings, sorted by distance |
+| GET | `/listings/mine` | Your own listings (auth required) |
+| GET | `/listings/:id` | Listing detail |
+| PATCH | `/listings/:id` | Update/mark sold (owner only) |
+| DELETE | `/listings/:id` | Remove a listing (owner only) |
+| POST | `/uploads` | Upload listing photos to B2 (multipart, auth required) |
+| POST | `/conversations` | Start a conversation with a listing's seller |
+| GET | `/conversations` | List your conversations |
+| GET | `/conversations/:id/messages` | Message history |
+| POST | `/conversations/:id/messages` | Send a message (REST fallback) |
 
-Real-time chat: connect a Socket.IO client with `auth: { token }`, then
-`emit("join", conversationId)` and `emit("message", { conversationId, body })`;
-incoming messages arrive on the `message` event.
+Real-time chat: connect a Socket.IO client to the `/market` namespace with
+`auth: { token }`, then `emit("join", conversationId)` and
+`emit("message", { conversationId, body })`; incoming messages arrive on the
+`message` event.

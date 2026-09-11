@@ -13,7 +13,9 @@ export function useChatSocket(conversationId: string | null, onMessage: (message
     const token = getToken();
     if (!token) return;
 
-    const socket = io(API_URL || undefined, { auth: { token } });
+    // Chat runs on its own namespace on the shared backend so it doesn't mix
+    // with other projects' events on the default namespace.
+    const socket = io(`${API_URL}/market`, { auth: { token } });
     socketRef.current = socket;
 
     socket.on("connect", () => setConnected(true));
