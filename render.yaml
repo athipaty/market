@@ -6,12 +6,11 @@ databases:
 
 services:
   - type: web
-    name: market-backend
+    name: market
     env: node
     plan: free
-    rootDir: backend
-    buildCommand: npm install && npm run build
-    startCommand: npx prisma migrate deploy && npm start
+    buildCommand: npm install --prefix frontend && npm run build --prefix frontend && npm install --prefix backend && npm run build --prefix backend
+    startCommand: cd backend && npx prisma migrate deploy && npm start
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -19,26 +18,5 @@ services:
           property: connectionString
       - key: JWT_SECRET
         generateValue: true
-      - key: PORT
-        value: 4000
-      # Update this after your first deploy to match your actual frontend URL
-      # (Render assigns it once the market-frontend service is created).
-      - key: CORS_ORIGIN
-        value: https://market-frontend.onrender.com
       - key: UPLOADS_DIR
         value: uploads
-
-  - type: web
-    name: market-frontend
-    env: static
-    rootDir: frontend
-    buildCommand: npm install && npm run build
-    staticPublishPath: dist
-    envVars:
-      # Update this after your first deploy to match your actual backend URL.
-      - key: VITE_API_URL
-        value: https://market-backend.onrender.com
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html

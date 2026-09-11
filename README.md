@@ -19,8 +19,14 @@ can search by distance and message you directly through in-app chat.
 ```
 backend/   Express + TypeScript API, Prisma/Postgres, Socket.IO chat
 frontend/  React + TypeScript (Vite) client
-render.yaml  Render Blueprint to deploy both services + a Postgres DB
+render.yaml  Render Blueprint: one paid web service + a free Postgres DB
 ```
+
+In production the backend also serves the built frontend, so the whole app
+runs as a single deployable/paid service (`backend/src/index.ts` serves
+`frontend/dist` as static files, with an SPA fallback to `index.html` for any
+route that isn't `/api/*`, `/uploads/*`, or `/socket.io/*`). Locally you still
+run the two dev servers separately (see below) for fast reloads.
 
 ## Local development
 
@@ -52,20 +58,18 @@ frontend and backend are on different origins.
 
 ## Deploying to Render
 
-`render.yaml` defines a Blueprint with three resources: a free Postgres
-database, the backend as a Node web service, and the frontend as a static
-site.
+`render.yaml` defines a Blueprint with two resources: a free Postgres
+database and a single Node web service (`market`) that builds the frontend,
+builds the backend, and serves both from one process — so you only pay for
+one service.
 
 1. Push this repo to GitHub/GitLab.
 2. In the Render dashboard, choose **New > Blueprint** and point it at the
-   repo. Render will provision `market-db`, `market-backend`, and
-   `market-frontend`.
-3. After the first deploy, Render assigns each service a URL like
-   `https://market-backend-xxxx.onrender.com`. Update the `CORS_ORIGIN` env
-   var on `market-backend` and `VITE_API_URL` on `market-frontend` to the
-   real URLs (the values in `render.yaml` are placeholders), then trigger a
-   manual redeploy of the frontend so the new API URL is baked into the
-   build.
+   repo. Render will provision `market-db` and `market`.
+3. That's it — no cross-service URLs to wire up, since the frontend and API
+   share one origin. The frontend's API client defaults to same-origin
+   relative requests when `VITE_API_URL` isn't set at build time, which is
+   the case here.
 
 Notes:
 - The free web service plan uses an ephemeral filesystem, so uploaded listing

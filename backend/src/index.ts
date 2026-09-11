@@ -23,6 +23,16 @@ app.use("/api/listings", listingsRouter);
 app.use("/api/conversations", conversationsRouter);
 app.use("/api/uploads", uploadsRouter);
 
+// Serve the built frontend from the same service (single deployable/paid
+// instance) when frontend/dist exists alongside this repo checkout.
+const frontendDistPath = path.resolve(__dirname, "../../frontend/dist");
+if (fs.existsSync(frontendDistPath)) {
+  app.use(express.static(frontendDistPath));
+  app.get(/^(?!\/api|\/uploads|\/socket\.io).*/, (_req, res) => {
+    res.sendFile(path.join(frontendDistPath, "index.html"));
+  });
+}
+
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);
   const message = err instanceof Error ? err.message : "Internal server error";
